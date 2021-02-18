@@ -2,6 +2,8 @@
 from rebuild import *
 
 
+# Disclaimer: This will not detect every legal url
+
 pat = force_full(
     # Protocol
     capture_as("protocol", one_or_more(letter()))
@@ -16,7 +18,7 @@ pat = force_full(
     )
 
     # Port
-    + optional(literally(":"), capture_as("port", one_or_more(digit())))
+    + optional(literally(":") + capture_as("port", one_or_more(digit())))
 
     # Path, make it non greedy, so that it does not consume the parameters, too
     + optional(capture_as("path", literally("/") + zero_or_more(anything(), greedy=False)))

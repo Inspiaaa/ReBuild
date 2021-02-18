@@ -353,7 +353,7 @@ def letter():
     return r"[a-zA-Z]"
 
 
-def space():
+def whitespace():
     return r"\s"
 
 

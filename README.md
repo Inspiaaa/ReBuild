@@ -1,6 +1,6 @@
 # ReBuild
 
-Generate Python flavoured regex patterns with functions
+ReBuild lets you create Regex patterns with ease as it allows you to generate them with functions. It is inspired by the Simple Regex Language (https://simple-regex.com/).
 
 ![](images/EmailRegex.png)
 

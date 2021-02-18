@@ -4,6 +4,12 @@ import re
 
 # Inspired by the simpler regex language SLR https://simple-regex.com/
 
+# It generates optimised Regex patterns by analysing the input patterns
+# Uses non capturing groups as often as possible to enhance performance
+
+
+_CHAR_SET_PATTERN = r"^\[((?:\\\\|\\]|.)+?)\]$"
+
 
 def _is_char_set(pattern):
     return bool(re.match(r"^\[((?:\\\\|\\]|.)+?)\]$", pattern))
@@ -30,12 +36,53 @@ def _only_in_char_set(char, pattern):
     return True
 
 
+def _is_only_in_group(pattern):
+    # Remove all char sets (as these could potentially contain brackets)
+    pattern = re.sub(_CHAR_SET_PATTERN, "", pattern)
+
+    # Remove literal \ back slashes (that do not make brackets literal characters)
+    pattern = pattern.replace(r"\\", "")
+
+    # Find all non-literal bracket characters: ( or )
+    brackets = re.findall(r"(?<!\\)\(|(?<!\\)\)", pattern)
+
+    if len(brackets) == 0:
+        return False
+
+    is_single_group = True
+
+    # Group depth (1 (2 (3)))
+    depth = 0
+    is_at_start = True
+    for bracket in brackets:
+        if bracket == "(":
+            # This marks the start of a second group, e.g. ()()
+            if depth == 0 and not is_at_start:
+                is_single_group = False
+
+            depth += 1
+        elif bracket == ")":
+            depth -= 1
+
+        is_at_start = False
+
+    if not is_single_group:
+        return False
+
+    if not pattern.startswith("(") and pattern.endswith(")"):
+        return False
+
+    return True
+
+
 def _group(pattern):
     """Logically groups a pattern, like you would with (...), but only when strictly necessary"""
 
-    # a|b would result in a non capture, [a|b] would not
-    if "|" in pattern and not _only_in_char_set("|", pattern):
-        return non_capture(pattern)
+    if _is_char_set(pattern):
+        return pattern
+
+    if _is_only_in_group(pattern):
+        return pattern
 
     # E.g. "\s", "\.", "\w"
     if re.match(r"^\\.$", pattern):
@@ -112,7 +159,11 @@ def zero_or_more(pattern, greedy=True):
 
 # TODO: Optimise for groups of only characters => [abc] instead of (?:a|b|) (also for \s, ...)
 def any_of(*groups):
-    groups = [_group(group) if "|" in group else group for group in groups]
+    groups = [
+        _group(group) if "|" in group and not _is_only_in_group(group)
+        else group
+        for group in groups]
+
     pattern = "|".join(groups)
     return non_capture(pattern)
 
@@ -129,15 +180,18 @@ def lookbehind(pattern):
     return f"(?<={pattern})"
 
 
-#def _literally_char(character):
-#    if re.match(r"[.\[\]*+?]", character):
-#        return "\\" + character
-#
-#    return character
+def _literally_char(character):
+    if re.match(r"[.\[\]*+?]", character):
+        return "\\" + character
+
+    return character
 
 
+# If it is not Python flavoured Regex, then this should be updated to check for more characters
 def literally(pattern):
-    return re.escape(pattern)
+    literal = re.escape(pattern)
+    # literal = "".join([_literally_char(char) for char in pattern])
+    return literal
 
 
 def negative_lookbehind(pattern):
@@ -196,17 +250,23 @@ def digit():
 
 
 def letter():
-    return r"\w"
+    return r"[a-zA-Z]"
 
 
 def space():
     return r"\s"
 
 
-# Check email address
-pat = force_full(
-    capture(one_or_more(r"[\d\w._%+-]"), name="name")
-    + literally("@")
-    + capture(one_or_more(r"[\d\w.-]") + literally(".") + at_least_n_times(2, letter()), name="domain")
-)
-print(pat)
+def anything():
+    return r"."
+
+
+# Aliased functions
+
+def capture_as(name, pattern):
+    """Same as capture(pattern, name)"""
+    return capture(pattern, name)
+
+
+def until(pattern):
+    return negative_lookahead(pattern)

@@ -27,4 +27,3 @@ pat = force_full(
 )
 
 print(pat)
-print(optional(literally("?")))

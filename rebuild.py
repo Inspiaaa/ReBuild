@@ -197,16 +197,18 @@ def zero_or_more(pattern, greedy=True):
 
 # TODO: Optimise nested either blocks (that do not capture!)
 # (?:a|(?:b|c)) --> (?:a|b|c)
+# TODO: Handle negative char sets [^...]
 def either(*groups):
     simplified_groups = []
 
     # Simplify character sets that come directly after another into one char set
     # (abc|[a-z]|[1-9]|def) --> (abc|[a-z0-9]|def)
     current_char_set = ""
+
     for group in groups:
         next_char_set = _get_char_set_content(group)
 
-        if next_char_set is not None:
+        if next_char_set is not None and not next_char_set.startswith("[^"):
             if next_char_set.startswith("]") and len(current_char_set) > 0:
                 # If it starts with a ], which is in fact legal, escape it when it is not the first character
                 # as that would break the char set
@@ -218,7 +220,8 @@ def either(*groups):
             continue
 
         # Characters such as "a", "\s", "\w" are also legal inside char sets
-        if _is_single_char(group):
+        # But keep special characters outside
+        if _is_single_char(group) and not re.match(r"^[$^.]|\\[AbBZ]$", group):
             current_char_set += group
             continue
 

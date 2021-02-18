@@ -13,7 +13,7 @@ pat = force_full(
     + capture_as(
         "domain",
         one_or_more(letter())
-        + one_or_more(any_of(letter(), literally(".")))
+        + one_or_more(either(letter(), literally(".")))
         + at_least_n_times(2, letter())
     )
 
@@ -22,7 +22,7 @@ pat = force_full(
 
     # Path, make it non greedy, so that it does not consume the parameters, too
     + optional(capture_as("path", literally("/") + zero_or_more(anything(), greedy=False)))
-    + any_of(literally("?"), must_end())
+    + either(literally("?"), must_end())
 
     # Parameters
     + optional(capture_as("parameters", zero_or_more(anything())))

@@ -11,4 +11,6 @@ pat = force_full(
 )
 
 print(pat)
+
+# Generates
 # ^(?P<name>[\d\w._%+-]+)@(?P<domain>[\d\w.-]+\.[a-zA-Z]{2,})$

@@ -29,3 +29,6 @@ pat = force_full(
 )
 
 print(pat)
+
+# Generates:
+# ^(?P<protocol>[a-zA-Z]+)://(?P<domain>[a-zA-Z]+(?:[a-zA-Z]|\.)+[a-zA-Z]{2,})(?::(?P<port>\d+))?(?P<path>/.*?)?(?:\?|$)(?P<parameters>.*)?$

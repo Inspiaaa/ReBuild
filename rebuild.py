@@ -45,16 +45,26 @@ _CHAR_SET_PATTERN = r"\[((?:\\\\|\\]|.)+?)\]"
 
 
 def _get_char_set_content(pattern):
-    match = re.match("^" + _CHAR_SET_PATTERN + "$", pattern)
+    match = re.match(_CHAR_SET_PATTERN, pattern)
 
     if match is None:
         return None
 
-    return match.group(1)
+    # The match isn't an exact one
+    if match.group(0) != pattern:
+        return None
+
+    content = match.group(1)
+
+    # The edge case, that the regex can't detect: [abc\]
+    if content.replace("\\\\", "").endswith("\\"):
+        return None
+
+    return content
 
 
 def _is_only_char_set(pattern):
-    return bool(re.match("^" + _CHAR_SET_PATTERN + "$", pattern))
+    return bool(_get_char_set_content(pattern))
 
 
 def _only_in_char_set(char, pattern):
@@ -63,13 +73,19 @@ def _only_in_char_set(char, pattern):
 
     matches = re.findall(_CHAR_SET_PATTERN, pattern)
 
+    # Check for the edge cases, where the regex pattern produces a false positive
     for match in matches:
-        if char not in match:
+        if match.replace("\\\\", "").endswith("\\") and char in match:
             return False
+
+    outside_char_sets = re.sub(_CHAR_SET_PATTERN, "", pattern)
+    if char in outside_char_sets:
+        return False
 
     return True
 
 
+# TODO: Find a better name
 def _is_only_in_group(pattern):
     # Remove all char sets (as these could potentially contain brackets)
     pattern = re.sub(_CHAR_SET_PATTERN, "", pattern)
@@ -100,6 +116,10 @@ def _is_only_in_group(pattern):
 
         is_at_start = False
 
+    # Brackets are mismatched, e.g. (((abc)
+    if depth != 0:
+        return False
+
     if not is_single_group:
         return False
 
@@ -122,6 +142,9 @@ def _is_single_char(pattern):
 def _group(pattern: str) -> str:
     """Logically groups a pattern, like you would with (...), but only when strictly necessary"""
 
+    if len(pattern) == 0:
+        return ""
+
     if _is_only_char_set(pattern):
         return pattern
 
@@ -132,17 +155,14 @@ def _group(pattern: str) -> str:
     if _is_single_char(pattern):
         return pattern
 
-    if len(pattern) <= 1:
-        return pattern
-
-    if _is_only_char_set(pattern):
-        return pattern
-
     return non_capture(pattern)
 
 
 def _ungroup(pattern: str) -> str:
     if not pattern.startswith("(?:"):
+        return pattern
+
+    if not _is_only_in_group(pattern):
         return pattern
 
     pattern = re.sub(r"^\(\?:", "", pattern)

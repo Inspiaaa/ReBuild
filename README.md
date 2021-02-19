@@ -34,4 +34,38 @@ With ReBuild you can write performant regex patterns in a readable and maintaina
 
 
 
-- Helps you discover new ways of writing regex patterns, that involve **more code reuse** 
+- Helps you discover new ways of writing regex patterns, that involve **more code reuse**
+
+
+
+### Optimisation
+
+ReBuild does a lot of processing ahead of time (AOT) to generate performant and simple regex patterns. Many of its functions can optimise specific cases, which means that many functions provide zero-cost abstraction.
+
+
+
+A good example to illustrate the optimisation power is the `either` function, which represents a regex OR function, e.g. `a|b|c`.
+
+```python
+# Matches the string abc, 123, or def
+either("abc", "123", "def")
+>>> "(?:abc|123|def)"
+
+
+# Matches any letter from a to z, any digit or the string "def"
+either("[a-z]", "[0-9"], "def")
+>>> "(?:[a-z0-9]|def)"
+# ReBuild detects the two character sets and combines them
+
+# Matches any letter from a to z or any digit
+either("[a-z]", "[0-9]")
+>>> "[a-z0-9]"
+# It detects that a logical or is not necessary anymore after 
+# combining the character sets and optimises it away
+
+
+# Matches the character "a", "b" or "c"
+either("a", "b", "c")
+>>> "[abc]"
+# ReBuild transforms the OR of individual characters into a single character set
+```

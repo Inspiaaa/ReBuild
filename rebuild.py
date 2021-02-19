@@ -24,8 +24,12 @@ either("[a-z]", "[0-9"], "def")
 ReBuild detects the two char sets and combines them
 
 either("[a-z]", "[0-9]")
->>> [a-z0-9]
+>>> "[a-z0-9]"
 It detects that a logical or is not necessary, and optimises it away
+
+either("a", "b", "c")
+>>> "[abc]"
+ReBuild transforms the OR of individual characters into a single character set
 """
 
 

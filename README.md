@@ -60,8 +60,8 @@ either("[a-z]", "[0-9"], "def")
 # Matches any letter from a to z or any digit
 either("[a-z]", "[0-9]")
 >>> "[a-z0-9]"
-# It detects that a logical or is not necessary anymore after 
-# combining the character sets and optimises it away
+# It detects that a OR is no longer necessary after 
+# combining the character sets, and optimises it away
 
 
 # Matches the character "a", "b" or "c"

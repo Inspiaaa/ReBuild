@@ -18,14 +18,14 @@ pat = force_full(
     )
 
     # Port
-    + optional(literally(":") + capture_as("port", one_or_more(digit())))
+    + optionally(literally(":") + capture_as("port", one_or_more(digit())))
 
     # Path, make it non greedy, so that it does not consume the parameters, too
-    + optional(capture_as("path", literally("/") + zero_or_more(anything(), greedy=False)))
+    + optionally(capture_as("path", literally("/") + zero_or_more(anything(), greedy=False)))
     + either(literally("?"), must_end())
 
     # Parameters
-    + optional(capture_as("parameters", zero_or_more(anything())))
+    + optionally(capture_as("parameters", zero_or_more(anything())))
 )
 
 print(pat)

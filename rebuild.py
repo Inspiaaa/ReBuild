@@ -25,7 +25,7 @@ ReBuild detects the two char sets and combines them
 
 either("[a-z]", "[0-9]")
 >>> "[a-z0-9]"
-It detects that a logical or is not necessary, and optimises it away
+It detects that an OR is not necessary, and optimises it away
 
 either("a", "b", "c")
 >>> "[abc]"

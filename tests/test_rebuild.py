@@ -38,6 +38,7 @@ def test_is_only_in_group():
     assert _is_only_in_group("(abc(def))") is True
     assert _is_only_in_group(r"(abc\\)") is True
 
+    # Sequences
     assert _is_only_in_group("abc") is False
     assert _is_only_in_group(r"\(abc\)") is False
     assert _is_only_in_group("(abc)(def)") is False

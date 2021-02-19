@@ -219,10 +219,20 @@ def at_least_n_but_not_more_than_m_times(n: int, m: int, pattern: str, greedy=Tr
     if n == m:
         return exactly_n_times(n, pattern)
 
+    if m == 0:
+        return ""
+
+    if m == 1:
+        return pattern + "?" if n == 0 else ""
+
     if not greedy:
         return f"{_group(pattern)}" + "{" + str(n) + "," + str(m) + "}?"
 
     return f"{_group(pattern)}" + "{" + str(n) + "," + str(m) + "}"
+
+
+def at_most_n_times(n: int, pattern: str, greedy=True) -> str:
+    return at_least_n_but_not_more_than_m_times(0, n, pattern, greedy)
 
 
 def zero_or_more(pattern: str, greedy=True) -> str:

@@ -280,6 +280,7 @@ def _literally_char(character):
 # If it is not Python flavoured Regex, then this should be updated to check for more characters
 def literally(pattern):
     literal = re.escape(pattern)
+    literal = re.sub("\"", "\\\"", literal)
     # literal = "".join([_literally_char(char) for char in pattern])
     return literal
 
@@ -358,6 +359,10 @@ def letter():
 
 def whitespace():
     return r"\s"
+
+
+def word_char():
+    return r"\w"
 
 
 def anything():

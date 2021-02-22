@@ -42,6 +42,7 @@ ReBuild transforms the OR of individual characters into a single character set
 # \\] = Escaped ] character
 # . = Any other character
 _CHAR_SET_PATTERN = r"\[((?:\\\\|\\]|.)+?)\]"
+# TODO: Use improved pattern: \[((?:\\\\|\\]|[^\\\n])+?)\]
 
 
 def _get_char_set_content(pattern):
@@ -403,6 +404,9 @@ def comment(note: str) -> str:
 def one_of(possible_characters: str) -> str:
     if possible_characters == "":
         return ""
+
+    if _is_single_char(possible_characters):
+        return possible_characters
 
     return f"[{possible_characters}]"
 

@@ -149,6 +149,7 @@ class RegexNode:
             value_json = json_for(value)
 
             if value_json is None:
+                # EmptyNode
                 subtree[prettify_varname(field) + ": ---"] = None
 
             elif type(value_json) is str:
@@ -162,6 +163,25 @@ class RegexNode:
     def pretty_print(self):
         tree = self.as_json()
         _print_pretty_tree(tree)
+
+
+def _ipretty_tree(tree, depth=0):
+    indentation = "|   " * depth
+
+    if type(tree) is list:
+        for item in tree:
+            yield from _ipretty_tree(item, depth)
+        return
+
+    if type(tree) is dict:
+        for name, subtree in tree.items():
+            yield indentation + name
+            if (type(subtree) is str and len(subtree) == 0) or subtree is None:
+                continue
+            yield from _ipretty_tree(subtree, depth + 1)
+        return
+
+    yield indentation + str(tree)
 
 
 def _print_pretty_tree(tree, depth=0):
@@ -249,114 +269,114 @@ class SingleChar (Atom):
 
 
 class OneOrMore (RegexNode):
-    def __init__(self, to_repeat):
-        self.to_repeat = to_repeat
+    def __init__(self, pattern):
+        self.pattern = pattern
 
     def optimised(self) -> "RegexNode":
-        if type(self.to_repeat) is EmptyNode:
+        if type(self.pattern) is EmptyNode:
             return EmptyNode()
         return self
 
     def regex(self, as_atom=False) -> str:
-        if type(self.to_repeat) is EmptyNode:
+        if type(self.pattern) is EmptyNode:
             return ""
-        pattern = self.to_repeat.regex(as_atom=True) + "+"
+        regex = self.pattern.regex(as_atom=True) + "+"
 
         if as_atom:
-            return f"(?:{pattern})"
+            return f"(?:{regex})"
 
-        return pattern
+        return regex
 
 
 class ZeroOrMore (RegexNode):
-    def __init__(self, to_repeat):
-        self.to_repeat = to_repeat
+    def __init__(self, pattern):
+        self.pattern = pattern
 
     def optimised(self) -> "RegexNode":
-        if type(self.to_repeat) is EmptyNode:
+        if type(self.pattern) is EmptyNode:
             return EmptyNode()
         return self
 
     def regex(self, as_atom=False) -> str:
-        if type(self.to_repeat) is EmptyNode:
+        if type(self.pattern) is EmptyNode:
             return ""
-        pattern = self.to_repeat.regex(as_atom=True) + "*"
+        regex = self.pattern.regex(as_atom=True) + "*"
 
         if as_atom:
-            return f"(?:{pattern})"
+            return f"(?:{regex})"
 
-        return pattern
+        return regex
 
 
 class Optional (RegexNode):
-    def __init__(self, to_repeat):
-        self.to_repeat = to_repeat
+    def __init__(self, pattern):
+        self.pattern = pattern
 
     def optimised(self) -> "RegexNode":
-        if type(self.to_repeat) is EmptyNode:
+        if type(self.pattern) is EmptyNode:
             return EmptyNode()
         return self
 
     def regex(self, as_atom=False) -> str:
-        if type(self.to_repeat) is EmptyNode:
+        if type(self.pattern) is EmptyNode:
             return ""
-        pattern = self.to_repeat.regex(as_atom=True) + "?"
+        regex = self.pattern.regex(as_atom=True) + "?"
 
         if as_atom:
-            return f"(?:{pattern})"
+            return f"(?:{regex})"
 
-        return pattern
+        return regex
 
 
 class CapturingGroup (Group):
-    def __init__(self, match):
-        self.match = match
+    def __init__(self, pattern):
+        self.pattern = pattern
 
     def regex(self, as_atom=False) -> str:
-        return f"({self.match.regex()})"
+        return f"({self.pattern.regex()})"
 
 
 class NamedCapturingGroup (Group):
-    def __init__(self, name, match):
+    def __init__(self, name, pattern):
         self.name = name
-        self.match = match
+        self.pattern = pattern
 
     def regex(self, as_atom=False) -> str:
-        return f"(?P<{self.name}>{self.match.regex()})"
+        return f"(?P<{self.name}>{self.pattern.regex()})"
 
 
 class Lookaround (RegexNode):
-    def __init__(self, match, symbol="="):
-        self.match = match
+    def __init__(self, pattern, symbol="="):
+        self.pattern = pattern
         self._symbol = symbol
 
     def optimised(self) -> "RegexNode":
-        if type(self.match) is EmptyNode:
+        if type(self.pattern) is EmptyNode:
             return EmptyNode()
         return self
 
     def regex(self, as_atom=False) -> str:
-        return f"(?{self._symbol}{self.match})"
+        return f"(?{self._symbol}{self.pattern})"
 
 
 class Lookahead (Lookaround):
-    def __init__(self, match):
-        super().__init__(match, "=")
+    def __init__(self, pattern):
+        super().__init__(pattern, "=")
 
 
 class NegativeLookahead (Lookaround):
-    def __init__(self, match):
-        super().__init__(match, "!")
+    def __init__(self, pattern):
+        super().__init__(pattern, "!")
 
 
 class Lookbehind (Lookaround):
-    def __init__(self, match):
-        super().__init__(match, "<=")
+    def __init__(self, pattern):
+        super().__init__(pattern, "<=")
 
 
 class NegativeLookbehind (Lookaround):
-    def __init__(self, match):
-        super().__init__(match, "<!")
+    def __init__(self, pattern):
+        super().__init__(pattern, "<!")
 
 
 def _get_single_child(items):

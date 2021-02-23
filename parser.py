@@ -1,5 +1,9 @@
 
 from lark import Lark, Transformer
+import re
+
+
+# TODO: Rename this file to analyser and maybe rebuild to builder and put both in a rebuild folder
 
 
 regex_grammar = r"""
@@ -101,7 +105,49 @@ class RegexNode:
         return True
 
     def as_json(self):
-        return {}
+        # Automatically generate a tree structure for this object
+
+        def json_for(value):
+            """Creates a json like structure for the given object """
+            if isinstance(value, RegexNode):
+                return value.as_json()
+            if type(value) in (list, tuple):
+                return [json_for(item) for item in value]
+            return str(value)
+
+        def prettify_varname(name):
+            return name.replace("_", " ").title()
+
+        def prettify_classname(name):
+            return re.sub(r"(?<=[a-z])([A-Z])", r" \1", name)
+
+        # Find all properties / fields of the object
+        fields = [field for field in vars(self) if not field.startswith("_")]
+
+        name = prettify_classname(self.__class__.__name__)
+
+        # E.g. for EmptyNode
+        if len(fields) == 0:
+            return name
+
+        # If there is only one field, then ignore the name of the field
+        if len(fields) == 1:
+            value = getattr(self, fields[0])
+            subtree = json_for(value)
+
+            if type(subtree) is str:
+                return name + ": \"" + subtree + "\""
+
+            return {name: subtree}
+
+        subtree = {}
+
+        for field in fields:
+            value = getattr(self, fields[0])
+
+            subtree[prettify_varname(field)] = value
+
+        return {name: subtree}
 
     def pretty_print(self):
         tree = self.as_json()
@@ -122,7 +168,7 @@ def _print_pretty_tree(tree, depth=0):
             _print_pretty_tree(subtree, depth+1)
         return
 
-    print(indentation + tree)
+    print(indentation + str(tree))
 
 
 class Group (RegexNode):
@@ -158,10 +204,10 @@ class Sequence (RegexNode):
         return Sequence(non_empty)
 
     def regex(self, as_atom=False) -> str:
-        return "".join(item.regex() for item in self.items)
-
-    def as_json(self):
-        return {"Sequence": [item.as_json() for item in self.items]}
+        pattern = "".join(item.regex() for item in self.items)
+        if as_atom:
+            return "(?:" + pattern + ")"
+        return pattern
 
 
 class Alternation (RegexNode):
@@ -178,9 +224,6 @@ class Alternation (RegexNode):
             return pattern
         return f"(?:{pattern})"
 
-    def as_json(self):
-        return {"Alternation": [option.as_json() for option in self.options]}
-
 
 class SingleChar (Atom):
     def __init__(self, char):
@@ -192,18 +235,19 @@ class SingleChar (Atom):
     def regex(self, as_atom=False) -> str:
         return self.char
 
-    def as_json(self):
-        return "Single Char: " + self.char
-
 
 class OneOrMore (RegexNode):
     def __init__(self, to_repeat):
         self.to_repeat = to_repeat
 
     def optimised(self) -> "RegexNode":
+        if type(self.to_repeat) is EmptyNode:
+            return EmptyNode()
         return self
 
     def regex(self, as_atom=False) -> str:
+        if type(self.to_repeat) is EmptyNode:
+            return ""
         pattern = self.to_repeat.regex(as_atom=True) + "+"
 
         if as_atom:
@@ -211,8 +255,45 @@ class OneOrMore (RegexNode):
 
         return pattern
 
-    def as_json(self):
-        return {"One or more": self.to_repeat.as_json()}
+
+class ZeroOrMore (RegexNode):
+    def __init__(self, to_repeat):
+        self.to_repeat = to_repeat
+
+    def optimised(self) -> "RegexNode":
+        if type(self.to_repeat) is EmptyNode:
+            return EmptyNode()
+        return self
+
+    def regex(self, as_atom=False) -> str:
+        if type(self.to_repeat) is EmptyNode:
+            return ""
+        pattern = self.to_repeat.regex(as_atom=True) + "*"
+
+        if as_atom:
+            return f"(?:{pattern})"
+
+        return pattern
+
+
+class Optional (RegexNode):
+    def __init__(self, to_repeat):
+        self.to_repeat = to_repeat
+
+    def optimised(self) -> "RegexNode":
+        if type(self.to_repeat) is EmptyNode:
+            return EmptyNode()
+        return self
+
+    def regex(self, as_atom=False) -> str:
+        if type(self.to_repeat) is EmptyNode:
+            return ""
+        pattern = self.to_repeat.regex(as_atom=True) + "?"
+
+        if as_atom:
+            return f"(?:{pattern})"
+
+        return pattern
 
 
 class ParseTreeTransformer (Transformer):
@@ -226,5 +307,8 @@ start = "main"
 
 regex_parser = Lark(regex_grammar, start=start, parser="lalr")
 
-tree = regex_parser.parse(r"\1(P=23)[]\u1234abc+\x20-\x59 \u1234-\u12345]")
+tree = regex_parser.parse(r"abc")
 print(tree.pretty())
+
+tree = ParseTreeTransformer().transform(tree)
+tree.pretty_print()

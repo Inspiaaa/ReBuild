@@ -1,5 +1,5 @@
 
-from lark import Lark, Transformer
+from lark import Lark, Transformer, Tree
 import re
 
 
@@ -20,18 +20,28 @@ regex_grammar = r"""
                | repeat
                | optional
     
-    one_or_more: atom "+" "?"?
-    zero_or_more: atom "*" "?"?
-    repeat: atom "{" /\d+/ "}" "?"?
-          | atom "{" /\d+/? ";" /\d+/ "}"
+    one_or_more: atom "+" is_lazy?
+    zero_or_more: atom "*" is_lazy?
+    optional: atom "?" is_lazy?
     
-    optional: atom "?"
+    ?repeat: repeat_exactly_n
+           | repeat_at_least_n
+           | repeat_at_most_n
+           | repeat_between_n_m
+    
+    is_lazy: "?"
+    
+    repeat_exactly_n:   atom "{" /\d+/ "}" is_lazy?
+    repeat_at_least_n:  atom "{" /\d+/ ",}" is_lazy?
+    repeat_at_most_n:   atom "{," /\d+/ "}" is_lazy?
+    repeat_between_n_m: atom "{" /\d+/ "," /\d+/ "}" is_lazy?
     
     ?atom: char_set
          | backreference
          | group
          | lookaround
          | single_char
+         | anchor
     
     // TODO: Split this into two rules:
     // one for normal characters
@@ -44,7 +54,7 @@ regex_grammar = r"""
                | PLUS
                | MINUS
                | ASTERISK
-               | /[^\n]/
+               | /[^\n^$]/
     
     UNICODE_CHARACTER: /\\u\d{4}/
     HEX_CHARACTER: /\\x[a-fA-F0-9]{2}/
@@ -52,6 +62,10 @@ regex_grammar = r"""
     MINUS: "-"
     ASTERISK: "*"
     DIGIT: /\d/
+    CARET: "^"
+    DOLLAR: "$"
+    
+    anchor: CARET | DOLLAR
     
     char_set: "[" (range | single_char)+ "]"
 
@@ -356,7 +370,7 @@ class Lookaround (RegexNode):
         return self
 
     def regex(self, as_atom=False) -> str:
-        return f"(?{self._symbol}{self.pattern})"
+        return f"(?{self._symbol}{self.pattern.regex()})"
 
 
 class Lookahead (Lookaround):
@@ -379,6 +393,107 @@ class NegativeLookbehind (Lookaround):
         super().__init__(pattern, "<!")
 
 
+class AnchorStart (RegexNode):
+    def regex(self, as_atom=False) -> str:
+        return "^"
+
+
+class AnchorEnd (RegexNode):
+    def regex(self, as_atom=False) -> str:
+        return "$"
+
+
+class CharSet (RegexNode):
+    def __init__(self, options):
+        self.options = options
+
+    def regex(self, as_atom=False) -> str:
+        return f"[{''.join([option.regex() for option in self.options])}]"
+
+
+class Range (RegexNode):
+    def __init__(self, from_char, to_char):
+        self.from_char = from_char
+        self.to_char = to_char
+
+    def optimised(self) -> "RegexNode":
+        if self.from_char == self.to_char:
+            return SingleChar(self.from_char)
+        return self
+
+    def regex(self, as_atom=False) -> str:
+        return self.from_char + "-" + self.to_char
+
+
+class RepeatExactlyN (RegexNode):
+    def __init__(self, pattern, n, is_lazy=False):
+        self.pattern = pattern
+        self.n = n
+        self.is_lazy = is_lazy
+
+    def regex(self, as_atom=False) -> str:
+        regex = self.pattern.regex(as_atom=True) + "{" + str(self.n) + "}"
+
+        if self.is_lazy:
+            regex += "?"
+
+        if as_atom:
+            return "(?:" + regex + ")"
+        return regex
+
+
+class RepeatAtLeastN (RegexNode):
+    def __init__(self, pattern, n, is_lazy):
+        self.pattern = pattern
+        self.n = n
+        self.is_lazy = is_lazy
+
+    def regex(self, as_atom=False) -> str:
+        regex = self.pattern.regex(as_atom=True) + "{" + str(self.n) + ",}"
+
+        if self.is_lazy:
+            regex += "?"
+
+        if as_atom:
+            return "(?:" + regex + ")"
+        return regex
+
+
+class RepeatAtMostN (RegexNode):
+    def __init__(self, pattern, n, is_lazy=False):
+        self.pattern = pattern
+        self.n = n
+        self.is_lazy = is_lazy
+
+    def regex(self, as_atom=False) -> str:
+        regex = self.pattern.regex(as_atom=True) + "{," + str(self.n) + "}"
+
+        if self.is_lazy:
+            regex += "?"
+
+        if as_atom:
+            return "(?:" + regex + ")"
+        return regex
+
+
+class RepeatBetweenNM (RegexNode):
+    def __init__(self, pattern, n, m, is_lazy=False):
+        self.pattern = pattern
+        self.n = n
+        self.m = m
+        self.is_lazy = is_lazy
+
+    def regex(self, as_atom=False) -> str:
+        regex = self.pattern.regex(as_atom=True) + "{" + str(self.n) + "," + str(self.m) + "}"
+
+        if self.is_lazy:
+            regex += "?"
+
+        if as_atom:
+            return "(?:" + regex + ")"
+        return regex
+
+
 def _get_single_child(items):
     if len(items) == 0:
         return EmptyNode()
@@ -387,6 +502,10 @@ def _get_single_child(items):
 
 def _one_child(cls, **kwargs):
     return lambda _, items: cls(_get_single_child(items), **kwargs)
+
+
+def _is_lazy(items):
+    return any([type(item) is Tree and tree.data == "is_lazy" for item in items])
 
 
 class ParseTreeTransformer (Transformer):
@@ -404,14 +523,26 @@ class ParseTreeTransformer (Transformer):
 
     named_capturing_group = lambda _, items: NamedCapturingGroup(items[0], _get_single_child(items[1:]))
     capturing_group = _one_child(CapturingGroup)
+    anchor = lambda _, items: AnchorStart() if items[0] == "^" else AnchorEnd()
+    char_set = CharSet
+
+    def repeat_exactly_n(self, items):
+        pattern = items[0]
+        n = int(items[1])
+        is_lazy = _is_lazy(items)
+        return RepeatExactlyN(pattern, n, is_lazy)
+    # TODO: Do this for others
+    # TODO: Add is_lazy to the quantifier ones
 
 
 start = "main"
 
 regex_parser = Lark(regex_grammar, start=start, parser="lalr")
 
-tree = regex_parser.parse(r"(?P<Hello>)abc(?=123)")
+tree = regex_parser.parse(r"a{20}?")
+print(tree)
 print(tree.pretty())
 
 tree = ParseTreeTransformer().transform(tree)
 tree.pretty_print()
+print(tree.regex())

@@ -74,15 +74,15 @@ regex_grammar = r"""
                | negative_lookahead
                | negative_lookbehind
     
-    lookahead: "(?=" main ")"
-    lookbehind: "(?<=" main ")"
-    negative_lookahead: "(?!" main ")"
-    negative_lookbehind: "(?<!" main ")"
+    lookahead: "(?=" main? ")"
+    lookbehind: "(?<=" main? ")"
+    negative_lookahead: "(?!" main? ")"
+    negative_lookbehind: "(?<!" main? ")"
     
     // Non-capturing groups are of no meaning
-    ?non_capturing_group: "(?:" main ")"
-    capturing_group: "(" main ")"
-    named_capturing_group: "(?P<" /\w+/ ">" main ")"
+    ?non_capturing_group: "(?:" main? ")"
+    capturing_group: "(" main? ")"
+    named_capturing_group: "(?P<" /\w+/ ">" main? ")"
     
     mode: "(?" /[aiLmsux]+/ ":" main ")"
     
@@ -110,6 +110,8 @@ class RegexNode:
         def json_for(value):
             """Creates a json like structure for the given object """
             if isinstance(value, RegexNode):
+                if type(value) is EmptyNode:
+                    return None
                 return value.as_json()
             if type(value) in (list, tuple):
                 return [json_for(item) for item in value]
@@ -143,10 +145,18 @@ class RegexNode:
         subtree = {}
 
         for field in fields:
-            value = getattr(self, fields[0])
+            value = getattr(self, field)
+            value_json = json_for(value)
 
-            subtree[prettify_varname(field)] = value
+            if value_json is None:
+                subtree[prettify_varname(field) + ": ---"] = None
 
+            elif type(value_json) is str:
+                subtree[prettify_varname(field) + ": \"" + value_json + "\""] = None
+            else:
+                subtree[prettify_varname(field)] = value_json
+
+        print(subtree)
         return {name: subtree}
 
     def pretty_print(self):
@@ -165,6 +175,8 @@ def _print_pretty_tree(tree, depth=0):
     if type(tree) is dict:
         for name, subtree in tree.items():
             print(indentation + name)
+            if (type(subtree) is str and len(subtree) == 0) or subtree is None:
+                continue
             _print_pretty_tree(subtree, depth+1)
         return
 
@@ -296,18 +308,89 @@ class Optional (RegexNode):
         return pattern
 
 
+class CapturingGroup (Group):
+    def __init__(self, match):
+        self.match = match
+
+    def regex(self, as_atom=False) -> str:
+        return f"({self.match.regex()})"
+
+
+class NamedCapturingGroup (Group):
+    def __init__(self, name, match):
+        self.name = name
+        self.match = match
+
+    def regex(self, as_atom=False) -> str:
+        return f"(?P<{self.name}>{self.match.regex()})"
+
+
+class Lookaround (RegexNode):
+    def __init__(self, match, symbol="="):
+        self.match = match
+        self._symbol = symbol
+
+    def optimised(self) -> "RegexNode":
+        if type(self.match) is EmptyNode:
+            return EmptyNode()
+        return self
+
+    def regex(self, as_atom=False) -> str:
+        return f"(?{self._symbol}{self.match})"
+
+
+class Lookahead (Lookaround):
+    def __init__(self, match):
+        super().__init__(match, "=")
+
+
+class NegativeLookahead (Lookaround):
+    def __init__(self, match):
+        super().__init__(match, "!")
+
+
+class Lookbehind (Lookaround):
+    def __init__(self, match):
+        super().__init__(match, "<=")
+
+
+class NegativeLookbehind (Lookaround):
+    def __init__(self, match):
+        super().__init__(match, "<!")
+
+
+def _get_single_child(items):
+    if len(items) == 0:
+        return EmptyNode()
+    return items[0]
+
+
+def _one_child(cls, **kwargs):
+    return lambda _, items: cls(_get_single_child(items), **kwargs)
+
+
 class ParseTreeTransformer (Transformer):
     alternation = Alternation
     sequence = Sequence
-    single_char = lambda self, items: SingleChar(items[0])
-    one_or_more = lambda self, items: OneOrMore(items[0])
+    single_char = _one_child(SingleChar)
+    one_or_more = _one_child(OneOrMore)
+    zero_or_more = _one_child(ZeroOrMore)
+    optional = _one_child(Optional)
+
+    lookahead = _one_child(Lookahead)
+    negative_lookahead = _one_child(NegativeLookahead)
+    lookbehind = _one_child(Lookbehind)
+    neagtive_lookbehind = _one_child(NegativeLookbehind)
+
+    named_capturing_group = lambda _, items: NamedCapturingGroup(items[0], _get_single_child(items[1:]))
+    capturing_group = _one_child(CapturingGroup)
 
 
 start = "main"
 
 regex_parser = Lark(regex_grammar, start=start, parser="lalr")
 
-tree = regex_parser.parse(r"abc")
+tree = regex_parser.parse(r"(?P<Hello>)abc(?=123)")
 print(tree.pretty())
 
 tree = ParseTreeTransformer().transform(tree)

@@ -1,5 +1,5 @@
 
-from lark import Lark, Transformer, Tree
+from lark import Lark, Transformer, Tree, Token
 import re
 
 
@@ -127,8 +127,13 @@ class RegexNode:
                 if type(value) is EmptyNode:
                     return None
                 return value.as_json()
+
             if type(value) in (list, tuple):
                 return [json_for(item) for item in value]
+
+            if type(value) is str:
+                return "\"" + value + "\""
+
             return str(value)
 
         def prettify_varname(name):
@@ -152,7 +157,7 @@ class RegexNode:
             subtree = json_for(value)
 
             if type(subtree) is str:
-                return name + ": \"" + subtree + "\""
+                return name + ": " + subtree
 
             return {name: subtree}
 
@@ -167,11 +172,10 @@ class RegexNode:
                 subtree[prettify_varname(field) + ": ---"] = None
 
             elif type(value_json) is str:
-                subtree[prettify_varname(field) + ": \"" + value_json + "\""] = None
+                subtree[prettify_varname(field) + ": " + value_json] = None
             else:
                 subtree[prettify_varname(field)] = value_json
 
-        print(subtree)
         return {name: subtree}
 
     def pretty_print(self):
@@ -283,7 +287,8 @@ class SingleChar (Atom):
 
 
 class OneOrMore (RegexNode):
-    def __init__(self, pattern):
+    def __init__(self, pattern, is_lazy):
+        self.is_lazy = is_lazy
         self.pattern = pattern
 
     def optimised(self) -> "RegexNode":
@@ -296,6 +301,9 @@ class OneOrMore (RegexNode):
             return ""
         regex = self.pattern.regex(as_atom=True) + "+"
 
+        if self.is_lazy:
+            regex += "?"
+
         if as_atom:
             return f"(?:{regex})"
 
@@ -303,7 +311,8 @@ class OneOrMore (RegexNode):
 
 
 class ZeroOrMore (RegexNode):
-    def __init__(self, pattern):
+    def __init__(self, pattern, is_lazy=False):
+        self.is_lazy = is_lazy
         self.pattern = pattern
 
     def optimised(self) -> "RegexNode":
@@ -316,6 +325,9 @@ class ZeroOrMore (RegexNode):
             return ""
         regex = self.pattern.regex(as_atom=True) + "*"
 
+        if self.is_lazy:
+            regex += "?"
+
         if as_atom:
             return f"(?:{regex})"
 
@@ -323,7 +335,8 @@ class ZeroOrMore (RegexNode):
 
 
 class Optional (RegexNode):
-    def __init__(self, pattern):
+    def __init__(self, pattern, is_lazy=False):
+        self.is_lazy = is_lazy
         self.pattern = pattern
 
     def optimised(self) -> "RegexNode":
@@ -335,6 +348,9 @@ class Optional (RegexNode):
         if type(self.pattern) is EmptyNode:
             return ""
         regex = self.pattern.regex(as_atom=True) + "?"
+
+        if self.is_lazy:
+            regex += "?"
 
         if as_atom:
             return f"(?:{regex})"
@@ -497,33 +513,45 @@ class RepeatBetweenNM (RegexNode):
 def _get_single_child(items):
     if len(items) == 0:
         return EmptyNode()
-    return items[0]
+    child = items[0]
+
+    if type(child) is Token:
+        return str(child)
+    if type(child) is Tree:
+        return str(child)
+    return child
 
 
-def _one_child(cls, **kwargs):
-    return lambda _, items: cls(_get_single_child(items), **kwargs)
+def _one_child(cls, look_for_lazy=False):
+    if look_for_lazy:
+        return lambda _, items: cls(_get_single_child(items), is_lazy=_is_lazy(items))
+    return lambda _, items: cls(_get_single_child(items))
 
 
 def _is_lazy(items):
-    return any([type(item) is Tree and tree.data == "is_lazy" for item in items])
+    return any([type(item) is Tree and item.data == "is_lazy" for item in items])
 
 
 class ParseTreeTransformer (Transformer):
     alternation = Alternation
     sequence = Sequence
     single_char = _one_child(SingleChar)
-    one_or_more = _one_child(OneOrMore)
-    zero_or_more = _one_child(ZeroOrMore)
-    optional = _one_child(Optional)
+    one_or_more = _one_child(OneOrMore, look_for_lazy=True)
+    zero_or_more = _one_child(ZeroOrMore, look_for_lazy=True)
+    optional = _one_child(Optional, look_for_lazy=True)
 
     lookahead = _one_child(Lookahead)
     negative_lookahead = _one_child(NegativeLookahead)
     lookbehind = _one_child(Lookbehind)
     neagtive_lookbehind = _one_child(NegativeLookbehind)
 
-    named_capturing_group = lambda _, items: NamedCapturingGroup(items[0], _get_single_child(items[1:]))
+    named_capturing_group = lambda _, items: NamedCapturingGroup(str(items[0]), _get_single_child(items[1:]))
     capturing_group = _one_child(CapturingGroup)
     anchor = lambda _, items: AnchorStart() if items[0] == "^" else AnchorEnd()
+
+    def range(self, items):
+        from_char, to_char = items[0].split("-")
+        return Range(from_char, to_char)
     char_set = CharSet
 
     def repeat_exactly_n(self, items):
@@ -531,6 +559,13 @@ class ParseTreeTransformer (Transformer):
         n = int(items[1])
         is_lazy = _is_lazy(items)
         return RepeatExactlyN(pattern, n, is_lazy)
+
+    def repeat_at_least_n(self, items):
+        pattern = items[0]
+        n = int(items[1])
+        is_lazy = _is_lazy(items)
+        return RepeatAtLeastN(pattern, n, is_lazy)
+
     # TODO: Do this for others
     # TODO: Add is_lazy to the quantifier ones
 
@@ -539,7 +574,7 @@ start = "main"
 
 regex_parser = Lark(regex_grammar, start=start, parser="lalr")
 
-tree = regex_parser.parse(r"a{20}?")
+tree = regex_parser.parse(r"^(?P<protocol>[a-zA-Z]+)://(?P<domain>[a-zA-Z]+[a-zA-Z\.]+[a-zA-Z]{2,})(?::(?P<port>\d+))?(?P<path>/.*?)?(?:\?|$)(?P<parameters>.*)?$")
 print(tree)
 print(tree.pretty())
 

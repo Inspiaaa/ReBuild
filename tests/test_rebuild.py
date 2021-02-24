@@ -1,7 +1,7 @@
 
-from rebuild import _group, _is_only_in_group, _ungroup
-from rebuild import _only_in_char_set, _is_single_char, _get_char_set_content, _is_only_char_set
-from rebuild import *
+from rebuild.builder import _group, _is_only_in_group, _ungroup
+from rebuild.builder import _only_in_char_set, _is_single_char, _get_char_set_content, _is_only_char_set
+from rebuild.builder import *
 
 
 def test_get_char_set_content():

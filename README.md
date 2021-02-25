@@ -49,23 +49,23 @@ A good example to illustrate the optimisation power is the `either` function, wh
 ```python
 # Matches the string abc, 123, or xyz
 either("abc", "123", "xyz")
->>> (?:abc|123|xyz)
+>>> '(?:abc|123|xyz)'
 
 
 # Matches any letter from a to z, any digit or the string "xyz"
 either("[a-z]", "[0-9]", "xyz")
->>> (?:[a-z0-9]|xyz)
+>>> '(?:[a-z0-9]|xyz)'
 # ReBuild detects the two character sets and combines them
 
 # Matches any letter from a to z or any digit
 either("[a-z]", "[0-9]")
->>> [a-z0-9]
+>>> '[a-z0-9]'
 # It detects that a OR is no longer necessary after 
 # combining the character sets, and optimises it away
 
 
 # Matches the character "a", "b" or "c"
 either("a", "b", "c")
->>> [abc]
+>>> '[abc]'
 # ReBuild transforms the OR of individual characters into a single character set
 ```

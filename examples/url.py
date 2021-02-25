@@ -1,5 +1,5 @@
 
-from rebuild import *
+from rebuild.builder import *
 
 
 # Disclaimer: This will not detect every legal url

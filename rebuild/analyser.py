@@ -147,7 +147,6 @@ class Sequence (RegexNode):
 
 
 # TODO: Add optimisations (Look at the either() in previous version in rebuild.py)
-# TODO: Optimise nested either blocks (that do not capture!)
 # TODO: Handle negative char sets [^...]
 class Alternation (RegexNode):
     def __init__(self, options):
@@ -155,7 +154,38 @@ class Alternation (RegexNode):
 
     def optimised(self) -> "RegexNode":
         optimised = [item.optimised() for item in self.options]
-        return Alternation(optimised)
+
+        simplified_options = []
+
+        # Flatten nested alternations (?:a|(?:b|c)) --> (?:a|b|c)
+        for item in optimised:
+            if type(item) is Alternation:
+                simplified_options.extend(item.options)
+                continue
+
+            simplified_options.append(item)
+
+        optimised = simplified_options
+        simplified_options = []
+
+        current_char_set = CharSet([])
+
+        for item in optimised:
+            succeeded = current_char_set.merge_with(item)
+
+            if succeeded:
+                continue
+
+            if len(current_char_set.options) > 0:
+                simplified_options.append(current_char_set.optimised())
+                current_char_set = CharSet([])
+
+            simplified_options.append(item)
+
+        if len(current_char_set.options) > 0:
+            simplified_options.append(current_char_set.optimised())
+
+        return Alternation(simplified_options)
 
     def regex(self, as_atom=False, is_root=False) -> str:
         pattern = "|".join(option.regex() for option in self.options)
@@ -373,8 +403,36 @@ class AnchorEnd (RegexNode):
 
 # TODO: Add optimisation (Look at one_of of previous rebuild.py version)
 class CharSet (RegexNode):
-    def __init__(self, options):
+    def __init__(self, options, is_inverted=False):
+        self.is_inverted = is_inverted
         self.options = options
+
+    def optimised(self) -> "RegexNode":
+        if len(self.options) == 0:
+            return EmptyNode()
+
+        if len(self.options) == 1 and type(self.options[0]) is SingleChar:
+            return self.options[0]
+
+        # TODO: Remove duplicates from the char set
+        # TODO: Remove single chars that are already included in a range
+
+        return self
+
+    def merge_with(self, node):
+        if self.is_inverted:
+            return False
+
+        # TODO: Handle negative char sets
+        if type(node) is CharSet and not node.is_inverted:
+            self.options.extend(node.options)
+            return True
+
+        if type(node) is SingleChar:
+            self.options.append(node)
+            return True
+
+        return False
 
     def regex(self, as_atom=False) -> str:
         return f"[{''.join([option.regex() for option in self.options])}]"

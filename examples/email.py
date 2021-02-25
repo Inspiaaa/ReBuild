@@ -1,5 +1,5 @@
 
-from rebuild import *
+from rebuild.builder import *
 
 pat = force_full(
     capture_as(

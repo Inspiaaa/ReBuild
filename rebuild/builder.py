@@ -1,5 +1,7 @@
 
 import re
+import rebuild.parser
+import rebuild.analyser
 
 
 """
@@ -43,6 +45,9 @@ ReBuild transforms the OR of individual characters into a single character set
 # . = Any other character
 _CHAR_SET_PATTERN = r"\[((?:\\\\|\\]|.)+?)\]"
 # TODO: Use improved pattern: \[((?:\\\\|\\]|[^\\\n])+?)\]
+
+
+INTERMEDIATE_OPTIMISATION = True
 
 
 def _get_char_set_content(pattern):
@@ -180,10 +185,20 @@ def must_end() -> str:
 
 
 def force_full(pattern: str) -> str:
-    return must_begin() + pattern + must_end()
+    regex = must_begin() + pattern + must_end()
+
+    # Empty full match
+    if pattern == "":
+        return regex
+
+    return _optimise_intermediate(regex)
 
 
 def non_capture(pattern: str) -> str:
+    if pattern == "":
+        return "(?:)"
+
+    pattern = _optimise_intermediate(pattern)
     return f"(?:{pattern})"
 
 
@@ -191,20 +206,23 @@ def optionally(pattern: str, check_for_empty_first=False) -> str:
     if pattern == "":
         return ""
 
+    regex = non_capture(pattern) + "?"
     if check_for_empty_first:
-        return _group(pattern) + "??"
+        regex += "?"
 
-    return _group(pattern) + "?"
+    return _optimise_intermediate(regex)
 
 
 def one_or_more(pattern: str, greedy=True) -> str:
     if pattern == "":
         return ""
 
-    if not greedy:
-        return _group(pattern) + "+?"
+    regex = non_capture(pattern) + "+"
 
-    return _group(pattern) + "+"
+    if not greedy:
+        regex += "?"
+
+    return _optimise_intermediate(regex)
 
 
 def at_least_n_times(n: int, pattern: str, greedy=True) -> str:
@@ -490,3 +508,22 @@ def if_preceded_by(pattern: str) -> str:
 
 def if_not_preceded_by(pattern: str) -> str:
     return negative_lookbehind(pattern)
+
+
+def _optimise_intermediate(regex: str):
+    if not INTERMEDIATE_OPTIMISATION:
+        return regex
+
+    tree = rebuild.parser.regex_to_tree(regex)
+    optimised = tree.optimised()
+    return optimised.regex(as_atom=True)
+
+
+def full_optimise(regex: str, is_root=False):
+    tree = rebuild.parser.regex_to_tree(regex)
+    optimised = tree.optimised()
+
+    if type(tree) is rebuild.analyser.Alternation and is_root:
+        return tree.regex(is_root=True)
+
+    return optimised.regex(as_atom=(not is_root))

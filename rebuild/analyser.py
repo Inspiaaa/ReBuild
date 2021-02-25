@@ -154,6 +154,7 @@ class Sequence (RegexNode):
         return pattern
 
 
+# TODO: Add optimisations
 class Alternation (RegexNode):
     def __init__(self, options):
         self.options = options
@@ -161,7 +162,7 @@ class Alternation (RegexNode):
     def optimised(self) -> "RegexNode":
         return self
 
-    def regex(self, is_root=False, as_atom=False) -> str:
+    def regex(self, as_atom=False, is_root=False) -> str:
         pattern = "|".join(option.regex() for option in self.options)
 
         if is_root:
@@ -260,6 +261,17 @@ class CapturingGroup (Group):
         return f"({self.pattern.regex()})"
 
 
+class NonCapturingGroup (Group):
+    def __init__(self, pattern):
+        self.pattern = pattern
+
+    def optimised(self) -> "RegexNode":
+        return self.pattern
+
+    def regex(self, as_atom=False) -> str:
+        return f"(?:{self.pattern.regex()})"
+
+
 class NamedCapturingGroup (Group):
     def __init__(self, name, pattern):
         self.name = name
@@ -276,6 +288,16 @@ class ModeGroup (RegexNode):
 
     def regex(self, as_atom=False) -> str:
         return f"(?{self.modifiers}:{self.pattern.regex()})"
+
+
+class IfElseGroup (RegexNode):
+    def __init__(self, name, then, elsewise):
+        self.name = name
+        self.then = then
+        self.elsewise = elsewise
+
+    def regex(self, as_atom=False) -> str:
+        return f"(?({self.name}){self.then.regex()}|{self.elsewise.regex()})"
 
 
 class Lookaround (RegexNode):

@@ -142,6 +142,7 @@ class ParseTreeTransformer (Transformer):
 
     named_capturing_group = lambda _, items: NamedCapturingGroup(str(items[0]), _get_single_child(items[1:]))
     capturing_group = _one_child(CapturingGroup)
+    non_capturing_group = _one_child(NonCapturingGroup)
     anchor = lambda _, items: AnchorStart() if items[0] == "^" else AnchorEnd()
 
     def mode(self, items):
@@ -180,6 +181,12 @@ class ParseTreeTransformer (Transformer):
         is_lazy = _is_lazy(items)
         return RepeatBetweenNM(pattern, n, m, is_lazy)
 
+    def if_else_group(self, items):
+        name = str(items[0])
+        then = _get_single_child(items[1:])
+        elsewise = _get_single_child(items[2:])
+        return IfElseGroup(name, then, elsewise)
+
 
 def debug_parse_tree(regex, use_lalr=True):
     if use_lalr:
@@ -192,6 +199,8 @@ def debug_parse_tree(regex, use_lalr=True):
 
 
 def regex_to_tree(regex) -> "RegexNode":
+    # Check if the regex is valid before running it through the parser => Better error messages
+    re.compile(regex)
     return regex_parser.parse(regex)
 
 
@@ -199,5 +208,6 @@ start = "main"
 
 regex_parser = Lark(regex_grammar, start=start, parser="lalr", transformer=ParseTreeTransformer())
 
-tree = regex_parser.parse(r"^(?P<protocol>[a-zA-Z]+)://(?P<domain>[a-zA-Z]+[a-zA-Z\.]+[a-zA-Z]{2,})(?::(?P<port>\d+))?(?P<path>/.*?)?(?:\?|$)(?P<parameters>.*)?$")
+tree = regex_parser.parse(r"(?:)??")
+print(debug_parse_tree(r"(?:a)??"))
 tree.pretty_print()

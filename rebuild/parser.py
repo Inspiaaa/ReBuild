@@ -78,7 +78,7 @@ regex_grammar = r"""
           | mode
           | capturing_group
     
-    if_else_group: "(?(" /\w+/ ")" sequence "|" sequence ")"
+    if_else_group: "(?(" /\w+/ ")" sequence? "|" sequence? ")"
     
     ?lookaround: lookahead
                | lookbehind
@@ -199,6 +199,9 @@ def debug_parse_tree(regex, use_lalr=True):
 
 
 def regex_to_tree(regex) -> "RegexNode":
+    if regex == "":
+        return EmptyNode()
+
     # Check if the regex is valid before running it through the parser => Better error messages
     re.compile(regex)
     return regex_parser.parse(regex)
@@ -207,7 +210,3 @@ def regex_to_tree(regex) -> "RegexNode":
 start = "main"
 
 regex_parser = Lark(regex_grammar, start=start, parser="lalr", transformer=ParseTreeTransformer())
-
-tree = regex_parser.parse(r"(?:)??")
-print(debug_parse_tree(r"(?:a)??"))
-tree.pretty_print()

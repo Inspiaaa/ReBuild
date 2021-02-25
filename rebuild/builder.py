@@ -50,132 +50,6 @@ _CHAR_SET_PATTERN = r"\[((?:\\\\|\\]|.)+?)\]"
 INTERMEDIATE_OPTIMISATION = True
 
 
-def _get_char_set_content(pattern):
-    match = re.match(_CHAR_SET_PATTERN, pattern)
-
-    if match is None:
-        return None
-
-    # The match isn't an exact one
-    if match.group(0) != pattern:
-        return None
-
-    content = match.group(1)
-
-    # The edge case, that the regex can't detect: [abc\]
-    if content.replace("\\\\", "").endswith("\\"):
-        return None
-
-    return content
-
-
-def _is_only_char_set(pattern):
-    return bool(_get_char_set_content(pattern))
-
-
-def _only_in_char_set(char, pattern):
-    if char not in pattern:
-        return False
-
-    matches = re.findall(_CHAR_SET_PATTERN, pattern)
-
-    # Check for the edge cases, where the regex pattern produces a false positive
-    for match in matches:
-        if match.replace("\\\\", "").endswith("\\") and char in match:
-            return False
-
-    outside_char_sets = re.sub(_CHAR_SET_PATTERN, "", pattern)
-    if char in outside_char_sets:
-        return False
-
-    return True
-
-
-# TODO: Find a better name
-def _is_only_in_group(pattern):
-    # Remove all char sets (as these could potentially contain brackets)
-    pattern = re.sub(_CHAR_SET_PATTERN, "", pattern)
-
-    # Remove literal \ back slashes (that do not make brackets literal characters)
-    pattern = pattern.replace(r"\\", "")
-
-    # Find all non-literal bracket characters: ( or )
-    brackets = re.findall(r"(?<!\\)\(|(?<!\\)\)", pattern)
-
-    if len(brackets) == 0:
-        return False
-
-    is_single_group = True
-
-    # Group depth (1 (2 (3)))
-    depth = 0
-    is_at_start = True
-    for bracket in brackets:
-        if bracket == "(":
-            # This marks the start of a second group, e.g. ()()
-            if depth == 0 and not is_at_start:
-                is_single_group = False
-
-            depth += 1
-        elif bracket == ")":
-            depth -= 1
-
-        is_at_start = False
-
-    # Brackets are mismatched, e.g. (((abc)
-    if depth != 0:
-        return False
-
-    if not is_single_group:
-        return False
-
-    if not pattern.startswith("(") or not pattern.endswith(")"):
-        return False
-
-    return True
-
-
-def _is_single_char(pattern):
-    if len(pattern) == 1:
-        return True
-
-    if re.match(r"^\\.$", pattern):
-        return True
-
-    return False
-
-
-def _group(pattern: str) -> str:
-    """Logically groups a pattern, like you would with (...), but only when strictly necessary"""
-
-    if len(pattern) == 0:
-        return ""
-
-    if _is_only_char_set(pattern):
-        return pattern
-
-    if _is_only_in_group(pattern):
-        return pattern
-
-    # E.g. "\s", "\.", "\w"
-    if _is_single_char(pattern):
-        return pattern
-
-    return non_capture(pattern)
-
-
-def _ungroup(pattern: str) -> str:
-    if not pattern.startswith("(?:"):
-        return pattern
-
-    if not _is_only_in_group(pattern):
-        return pattern
-
-    pattern = re.sub(r"^\(\?:", "", pattern)
-    pattern = re.sub(r"\)$", "", pattern)
-    return pattern
-
-
 def must_begin() -> str:
     return "^"
 
@@ -229,63 +103,58 @@ def at_least_n_times(n: int, pattern: str, greedy=True) -> str:
     if pattern == "":
         return ""
 
-    if n == 0:
-        return zero_or_more(pattern, greedy)
-    if n == 1:
-        return one_or_more(pattern, greedy)
+    regex = f"{non_capture(pattern)}" + "{" + str(n) + ",}"
 
     if not greedy:
-        return f"{_group(pattern)}" + "{" + str(n) + ",}?"
+        regex += "?"
 
-    return f"{_group(pattern)}" + "{" + str(n) + ",}"
+    return _optimise_intermediate(regex)
 
 
 def exactly_n_times(n: int, pattern: str) -> str:
     if pattern == "":
         return ""
 
-    if n == 0:
-        return ""
-    if n == 1:
-        return pattern
-    return f"{_group(pattern)}" + "{" + str(n) + "}"
+    regex = f"{non_capture(pattern)}" + "{" + str(n) + "}"
+
+    return _optimise_intermediate(regex)
 
 
 def at_least_n_but_not_more_than_m_times(n: int, m: int, pattern: str, greedy=True) -> str:
     if pattern == "":
         return ""
 
-    if n == m:
-        return exactly_n_times(n, pattern)
-
-    if m == 0:
-        return ""
-
-    if m == 1:
-        return pattern + "?" if n == 0 else ""
-
+    regex = f"{non_capture(pattern)}" + "{" + str(n) + "," + str(m) + "}"
     if not greedy:
-        return f"{_group(pattern)}" + "{" + str(n) + "," + str(m) + "}?"
+        regex += "?"
 
-    return f"{_group(pattern)}" + "{" + str(n) + "," + str(m) + "}"
+    _optimise_intermediate(regex)
 
 
 def at_most_n_times(n: int, pattern: str, greedy=True) -> str:
-    return at_least_n_but_not_more_than_m_times(0, n, pattern, greedy)
+    if pattern == "":
+        return ""
+
+    regex = f"{non_capture(pattern)}" + "{," + str(n) + "}"
+
+    if not greedy:
+        regex += "?"
+
+    return _optimise_intermediate(regex)
 
 
 def zero_or_more(pattern: str, greedy=True) -> str:
     if pattern == "":
         return ""
 
+    regex = non_capture(pattern) + "*"
+
     if not greedy:
-        return _group(pattern) + "*?"
-    return _group(pattern) + "*"
+        regex += "?"
+
+    return _optimise_intermediate(regex)
 
 
-# TODO: Optimise nested either blocks (that do not capture!)
-# (?:a|(?:b|c)) --> (?:a|b|c)
-# TODO: Handle negative char sets [^...]
 def either(*groups) -> str:
     # Filter out empty strings
     groups = list(filter(None, groups))
@@ -293,81 +162,40 @@ def either(*groups) -> str:
     if len(groups) == 0:
         return ""
 
-    simplified_groups = []
-
-    # Simplify character sets that come directly after another into one char set
-    # (abc|[a-z]|[0-9]|def) --> (abc|[a-z0-9]|def)
-    current_char_set = ""
-
-    for group in groups:
-        next_char_set = _get_char_set_content(group)
-
-        if next_char_set is not None and not next_char_set.startswith("[^"):
-            if next_char_set.startswith("]") and len(current_char_set) > 0:
-                # If it starts with a ], which is in fact legal, escape it when it is not the first character
-                # as that would break the char set
-                # []] => Fine
-                # [abc\]] => Add escape character
-
-                next_char_set = "\\" + next_char_set
-            current_char_set += next_char_set
-            continue
-
-        # Characters such as "a", "\s", "\w" are also legal inside char sets
-        # But keep special characters outside
-        if _is_single_char(group) and not re.match(r"^[$^.]|\\[AbBZ]$", group):
-            current_char_set += group
-            continue
-
-        # The next item is not a character set
-        # Check if the previously created char set has some content and add it as a char set
-        if len(current_char_set) > 0:
-            if _is_single_char(current_char_set):
-                # There is only one character in the set, e.g. [a]
-                # => Remove redundant char set brackets
-                simplified_groups.append(current_char_set)
-            else:
-                simplified_groups.append("[" + current_char_set + "]")
-            current_char_set = ""
-
-        simplified_groups.append(group)
-
-    # Add the last character set
-    if len(current_char_set) > 0:
-        simplified_groups.append("[" + current_char_set + "]")
-
-    if len(simplified_groups) == 0:
-        return ""
-
-    if len(simplified_groups) == 1:
-        return simplified_groups[0]
-
-    # Put elements in groups that strictly need to be
-    simplified_groups = [
-        _group(group) if "|" in group and not _is_only_in_group(group)
-        else group
-        for group in simplified_groups]
-
-    pattern = "|".join(simplified_groups)
-    return non_capture(pattern)
+    regex = non_capture("|".join(non_capture(group) for group in groups))
+    return _optimise_intermediate(regex)
 
 
 def lookahead(pattern: str) -> str:
     if pattern == "":
         return ""
-    return f"(?={pattern})"
+
+    regex = f"(?={pattern})"
+    return _optimise_intermediate(regex)
 
 
 def negative_lookahead(pattern: str) -> str:
     if pattern == "":
         return ""
-    return f"(?!{pattern})"
+
+    regex = f"(?!{pattern})"
+    return _optimise_intermediate(regex)
 
 
 def lookbehind(pattern: str) -> str:
     if pattern == "":
         return ""
-    return f"(?<={pattern})"
+
+    regex = f"(?<={pattern})"
+    return _optimise_intermediate(regex)
+
+
+def negative_lookbehind(pattern: str) -> str:
+    if pattern == "":
+        return ""
+
+    regex = f"(?<!{pattern})"
+    return _optimise_intermediate(regex)
 
 
 def _literally_char(character):
@@ -385,48 +213,32 @@ def literally(pattern: str) -> str:
     return literal
 
 
-def negative_lookbehind(pattern: str) -> str:
-    if pattern == "":
-        return ""
-    return f"(?<!{pattern})"
-
-
 def capture(pattern: str, name: str = None) -> str:
-    if _is_only_in_group(pattern):
-        # Check if it is actually a non-capturing group
-        if pattern.startswith("(?:"):
-
-            # Remove the non-capturing group, as it is going to be wrapped in a capturing group anyway
-            pattern = _ungroup(pattern)
-
     if name is None:
-        return f"({pattern})"
+        regex = f"({pattern})"
+    else:
+        regex = f"(?P<{name}>{pattern})"
 
-    return f"(?P<{name}>{pattern})"
+    return _optimise_intermediate(regex)
 
 
 def match_previous(num: int = None, name: str = None) -> str:
     if num is not None:
-        return f"\\{num}"
+        regex = f"\\{num}"
+    elif name is not None:
+        regex = f"(?P={name})"
+    else:
+        return ""
 
-    if name is not None:
-        return f"(?P={name})"
-
-    return ""
-
-
-def comment(note: str) -> str:
-    return f"(#{note})"
+    return _optimise_intermediate(regex)
 
 
 def one_of(possible_characters: str) -> str:
     if possible_characters == "":
         return ""
 
-    if _is_single_char(possible_characters):
-        return possible_characters
-
-    return f"[{possible_characters}]"
+    regex = f"[{possible_characters}]"
+    return _optimise_intermediate(regex)
 
 
 def mode(pattern: str,
@@ -450,11 +262,13 @@ def mode(pattern: str,
     # Must have at least one modifier active!
     assert len(modifiers) > 0
 
-    return f"(?{modifiers}:{pattern})"
+    regex = f"(?{modifiers}:{pattern})"
+
+    return _optimise_intermediate(regex)
 
 
 def match_everything_but(pattern: str) -> str:
-    return force_full(negative_lookahead(pattern) + r".*")
+    return _optimise_intermediate(force_full(negative_lookahead(pattern) + r".*"))
 
 
 def digit() -> str:
@@ -478,13 +292,9 @@ def anything() -> str:
 
 
 def if_group_exists_then_else(name: str, then: str, elsewise: str) -> str:
-    if "|" in then and not _only_in_char_set("|", then):
-        then = _group(then)
+    regex = f"(?({name}){non_capture(then)}|{non_capture(elsewise)})"
 
-    if "|" in elsewise and not _only_in_char_set("|", elsewise):
-        elsewise = _group(elsewise)
-
-    return f"(?({name}){then}|{elsewise})"
+    return _optimise_intermediate(regex)
 
 
 # Aliased functions
@@ -516,7 +326,7 @@ def _optimise_intermediate(regex: str):
 
     tree = rebuild.parser.regex_to_tree(regex)
     optimised = tree.optimised()
-    return optimised.regex(as_atom=True)
+    return optimised.regex(as_atom=False)
 
 
 def full_optimise(regex: str, is_root=False):

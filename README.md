@@ -53,8 +53,8 @@ either("abc", "123", "def")
 
 
 # Matches any letter from a to z, any digit or the string "def"
-either("[a-z]", "[0-9"], "def")
->>> "(?:[a-z0-9]|def)"
+either("[a-z]", "[0-9]", "abc")
+>>> "(?:[a-z0-9]|abc)"
 # ReBuild detects the two character sets and combines them
 
 # Matches any letter from a to z or any digit

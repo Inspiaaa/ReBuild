@@ -329,7 +329,7 @@ def _optimise_intermediate(regex: str):
     return optimised.regex(as_atom=False)
 
 
-def full_optimise(regex: str, is_root=False):
+def optimise(regex: str, is_root=True):
     tree = rebuild.parser.regex_to_tree(regex)
     optimised = tree.optimised()
 

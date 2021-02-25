@@ -269,6 +269,15 @@ class NamedCapturingGroup (Group):
         return f"(?P<{self.name}>{self.pattern.regex()})"
 
 
+class ModeGroup (RegexNode):
+    def __init__(self, modifiers, pattern):
+        self.modifiers = modifiers
+        self.pattern = pattern
+
+    def regex(self, as_atom=False) -> str:
+        return f"(?{self.modifiers}:{self.pattern.regex()})"
+
+
 class Lookaround (RegexNode):
     def __init__(self, pattern, symbol="="):
         self.pattern = pattern

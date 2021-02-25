@@ -144,25 +144,41 @@ class ParseTreeTransformer (Transformer):
     capturing_group = _one_child(CapturingGroup)
     anchor = lambda _, items: AnchorStart() if items[0] == "^" else AnchorEnd()
 
+    def mode(self, items):
+        modifiers = str(items[0])
+        pattern = _get_single_child(items[1:])
+        return ModeGroup(modifiers, pattern)
+
     def range(self, items):
         from_char, to_char = items[0].split("-")
         return Range(from_char, to_char)
+
     char_set = CharSet
 
     def repeat_exactly_n(self, items):
-        pattern = items[0]
+        pattern = _get_single_child(items)
         n = int(items[1])
         is_lazy = _is_lazy(items)
         return RepeatExactlyN(pattern, n, is_lazy)
 
     def repeat_at_least_n(self, items):
-        pattern = items[0]
+        pattern = _get_single_child(items)
         n = int(items[1])
         is_lazy = _is_lazy(items)
         return RepeatAtLeastN(pattern, n, is_lazy)
 
-    # TODO: Do this for others
-    # TODO: Add is_lazy to the quantifier ones
+    def repeat_at_most_n(self, items):
+        pattern = _get_single_child(items)
+        n = int(items[1])
+        is_lazy = _is_lazy(items)
+        return RepeatAtMostN(pattern, n, is_lazy)
+
+    def repeat_between_n_m(self, items):
+        pattern = _get_single_child(items)
+        n = int(items[1])
+        m = int(items[2])
+        is_lazy = _is_lazy(items)
+        return RepeatBetweenNM(pattern, n, m, is_lazy)
 
 
 def debug_parse_tree(regex, use_lalr=True):
@@ -175,7 +191,7 @@ def debug_parse_tree(regex, use_lalr=True):
     return tree
 
 
-def regex_to_tree(regex):
+def regex_to_tree(regex) -> "RegexNode":
     return regex_parser.parse(regex)
 
 
@@ -184,9 +200,4 @@ start = "main"
 regex_parser = Lark(regex_grammar, start=start, parser="lalr", transformer=ParseTreeTransformer())
 
 tree = regex_parser.parse(r"^(?P<protocol>[a-zA-Z]+)://(?P<domain>[a-zA-Z]+[a-zA-Z\.]+[a-zA-Z]{2,})(?::(?P<port>\d+))?(?P<path>/.*?)?(?:\?|$)(?P<parameters>.*)?$")
-print(tree)
-print(tree.pretty())
-
-tree = ParseTreeTransformer().transform(tree)
 tree.pretty_print()
-print(tree.regex())

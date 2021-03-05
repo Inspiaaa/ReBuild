@@ -435,7 +435,6 @@ class AnchorEnd (RegexNode):
         return "$"
 
 
-# TODO: Add optimisation (Look at one_of of previous rebuild.py version)
 class CharSet (RegexNode):
     def __init__(self, options, is_inverted=False):
         self.is_inverted = is_inverted

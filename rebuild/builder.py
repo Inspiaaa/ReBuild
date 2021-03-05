@@ -333,7 +333,8 @@ def optimise(regex: str, is_root=True):
     tree = rebuild.parser.regex_to_tree(regex)
     optimised = tree.optimised()
 
-    if type(tree) is rebuild.analyser.Alternation and is_root:
-        return tree.regex(is_root=True)
+    return optimised.regex(as_atom=(not is_root), in_sequence=(not is_root))
 
-    return optimised.regex(as_atom=(not is_root))
+
+def full_empty():
+    return r"^$"

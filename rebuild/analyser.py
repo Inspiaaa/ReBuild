@@ -6,7 +6,7 @@ class RegexNode:
     def optimised(self) -> "RegexNode":
         return self
 
-    def regex(self, as_atom=False) -> str:
+    def regex(self, as_atom=False, in_sequence=True) -> str:
         return ""
 
     def __bool__(self):
@@ -139,7 +139,7 @@ class Sequence (RegexNode):
 
         return Sequence(non_empty)
 
-    def regex(self, as_atom=False) -> str:
+    def regex(self, as_atom=False, in_sequence=True) -> str:
         pattern = "".join(item.regex() for item in self.items)
         if as_atom:
             return "(?:" + pattern + ")"
@@ -187,10 +187,10 @@ class Alternation (RegexNode):
 
         return Alternation(simplified_options)
 
-    def regex(self, as_atom=False, is_root=False) -> str:
+    def regex(self, as_atom=False, in_sequence=True) -> str:
         pattern = "|".join(option.regex() for option in self.options)
 
-        if is_root:
+        if not in_sequence:
             return pattern
         return f"(?:{pattern})"
 
@@ -199,7 +199,7 @@ class SingleChar (RegexNode):
     def __init__(self, char):
         self.char = char
 
-    def regex(self, as_atom=False) -> str:
+    def regex(self, as_atom=False, in_sequence=True) -> str:
         return self.char
 
 
@@ -215,7 +215,7 @@ class OneOrMore (RegexNode):
         optimised = self.pattern.optimised()
         return OneOrMore(optimised, self.is_lazy)
 
-    def regex(self, as_atom=False) -> str:
+    def regex(self, as_atom=False, in_sequence=True) -> str:
         if type(self.pattern) is EmptyNode:
             return ""
 
@@ -242,7 +242,7 @@ class ZeroOrMore (RegexNode):
         optimised = self.pattern.optimised()
         return ZeroOrMore(optimised, self.is_lazy)
 
-    def regex(self, as_atom=False) -> str:
+    def regex(self, as_atom=False, in_sequence=True) -> str:
         if type(self.pattern) is EmptyNode:
             return ""
 
@@ -269,7 +269,7 @@ class Optional (RegexNode):
         optimised = self.pattern.optimised()
         return Optional(optimised, self.is_lazy)
 
-    def regex(self, as_atom=False) -> str:
+    def regex(self, as_atom=False, in_sequence=True) -> str:
         if type(self.pattern) is EmptyNode:
             return ""
 
@@ -291,8 +291,8 @@ class CapturingGroup (RegexNode):
     def optimised(self) -> "RegexNode":
         return CapturingGroup(self.pattern.optimised())
 
-    def regex(self, as_atom=False) -> str:
-        return f"({self.pattern.regex()})"
+    def regex(self, as_atom=False, in_sequence=True) -> str:
+        return f"({self.pattern.regex(in_sequence=False)})"
 
 
 class NonCapturingGroup (RegexNode):
@@ -302,8 +302,8 @@ class NonCapturingGroup (RegexNode):
     def optimised(self) -> "RegexNode":
         return self.pattern.optimised()
 
-    def regex(self, as_atom=False) -> str:
-        return f"(?:{self.pattern.regex()})"
+    def regex(self, as_atom=False, in_sequence=True) -> str:
+        return f"(?:{self.pattern.regex(in_sequence=False)})"
 
 
 class NamedCapturingGroup (RegexNode):
@@ -314,8 +314,8 @@ class NamedCapturingGroup (RegexNode):
     def optimised(self) -> "RegexNode":
         return NamedCapturingGroup(self.name, self.pattern.optimised())
 
-    def regex(self, as_atom=False) -> str:
-        return f"(?P<{self.name}>{self.pattern.regex()})"
+    def regex(self, as_atom=False, in_sequence=True) -> str:
+        return f"(?P<{self.name}>{self.pattern.regex(in_sequence=False)})"
 
 
 class ModeGroup (RegexNode):
@@ -332,14 +332,14 @@ class ModeGroup (RegexNode):
 
         return ModeGroup(self.modifiers, self.pattern.optimised())
 
-    def regex(self, as_atom=False) -> str:
+    def regex(self, as_atom=False, in_sequence=True) -> str:
         if type(self.pattern) is EmptyNode:
             return ""
 
         if len(self.modifiers) == 0:
             return self.pattern.regex(as_atom=as_atom)
 
-        return f"(?{self.modifiers}:{self.pattern.regex()})"
+        return f"(?{self.modifiers}:{self.pattern.regex(in_sequence=False)})"
 
 
 class IfElseGroup (RegexNode):
@@ -353,7 +353,7 @@ class IfElseGroup (RegexNode):
             return EmptyNode()
         return IfElseGroup(self.name, self.then.optimised(), self.elsewise.optimised())
 
-    def regex(self, as_atom=False) -> str:
+    def regex(self, as_atom=False, in_sequence=True) -> str:
         return f"(?({self.name}){self.then.regex()}|{self.elsewise.regex()})"
 
 
@@ -367,8 +367,8 @@ class Lookaround (RegexNode):
             return EmptyNode()
         return Lookaround(self.pattern.optimised(), self._symbol)
 
-    def regex(self, as_atom=False) -> str:
-        return f"(?{self._symbol}{self.pattern.regex()})"
+    def regex(self, as_atom=False, in_sequence=True) -> str:
+        return f"(?{self._symbol}{self.pattern.regex(in_sequence=False)})"
 
 
 class Lookahead (Lookaround):
@@ -392,12 +392,12 @@ class NegativeLookbehind (Lookaround):
 
 
 class AnchorStart (RegexNode):
-    def regex(self, as_atom=False) -> str:
+    def regex(self, as_atom=False, in_sequence=True) -> str:
         return "^"
 
 
 class AnchorEnd (RegexNode):
-    def regex(self, as_atom=False) -> str:
+    def regex(self, as_atom=False, in_sequence=True) -> str:
         return "$"
 
 
@@ -434,7 +434,7 @@ class CharSet (RegexNode):
 
         return False
 
-    def regex(self, as_atom=False) -> str:
+    def regex(self, as_atom=False, in_sequence=True) -> str:
         return f"[{''.join([option.regex() for option in self.options])}]"
 
 
@@ -449,7 +449,7 @@ class Range (RegexNode):
             return SingleChar(self.from_char)
         return self
 
-    def regex(self, as_atom=False) -> str:
+    def regex(self, as_atom=False, in_sequence=True) -> str:
         return self.from_char + "-" + self.to_char
 
 
@@ -473,7 +473,7 @@ class RepeatExactlyN (RegexNode):
 
         return RepeatExactlyN(optimised, self.n, self.is_lazy)
 
-    def regex(self, as_atom=False) -> str:
+    def regex(self, as_atom=False, in_sequence=True) -> str:
         regex = self.pattern.regex(as_atom=True)
 
         if regex == "":
@@ -509,7 +509,7 @@ class RepeatAtLeastN (RegexNode):
 
         return RepeatAtLeastN(optimised, self.n, self.is_lazy)
 
-    def regex(self, as_atom=False) -> str:
+    def regex(self, as_atom=False, in_sequence=True) -> str:
         regex = self.pattern.regex(as_atom=True)
 
         if regex == "":
@@ -545,7 +545,7 @@ class RepeatAtMostN (RegexNode):
 
         return RepeatAtMostN(optimised, self.n, self.is_lazy)
 
-    def regex(self, as_atom=False) -> str:
+    def regex(self, as_atom=False, in_sequence=True) -> str:
         regex = self.pattern.regex(as_atom=True)
 
         if regex == "":
@@ -585,7 +585,7 @@ class RepeatBetweenNM (RegexNode):
 
         return RepeatBetweenNM(optimised, self.n, self.m, self.is_lazy)
 
-    def regex(self, as_atom=False) -> str:
+    def regex(self, as_atom=False, in_sequence=True) -> str:
         regex = self.pattern.regex(as_atom=True)
 
         if regex == "":

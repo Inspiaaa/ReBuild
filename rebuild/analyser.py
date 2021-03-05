@@ -1,5 +1,6 @@
 
 import re
+from ordered_set import OrderedSet
 
 
 class RegexNode:
@@ -8,6 +9,24 @@ class RegexNode:
 
     def regex(self, as_atom=False, in_sequence=True) -> str:
         return ""
+
+    def __str__(self):
+        return str(self.as_json())
+
+    def __eq__(self, other):
+        if self is other:
+            return True
+
+        if type(self) is not type(other):
+            return False
+
+        own_fields = tuple([(k, v) for k, v in self.__dict__.items() if not k.startswith("_")])
+        other_fields = tuple([(k, v) for k, v in other.__dict__.items() if not k.startswith("_")])
+
+        return own_fields == other_fields
+
+    def __hash__(self):
+        return hash(tuple([(k, v) for k, v in self.__dict__.items() if not k.startswith("_")]))
 
     def __bool__(self):
         return True
@@ -148,6 +167,7 @@ class Sequence (RegexNode):
 
 # TODO: Add optimisations (Look at the either() in previous version in rebuild.py)
 # TODO: Handle negative char sets [^...]
+# TODO: Factor out common part in sequences
 class Alternation (RegexNode):
     def __init__(self, options):
         self.options = options
@@ -168,6 +188,9 @@ class Alternation (RegexNode):
         optimised = simplified_options
         simplified_options = []
 
+        # Merge items together, that come directly after one another
+        # (?:a|b|c|hello) --> (?:[abc]|hello)
+        # (?:[0-9]|[a-z]|hello) --> (?:[0-9a-z]|hello)
         current_char_set = CharSet([])
 
         for item in optimised:
@@ -180,12 +203,23 @@ class Alternation (RegexNode):
                 simplified_options.append(current_char_set.optimised())
                 current_char_set = CharSet([])
 
-            simplified_options.append(item)
+            succeeded = current_char_set.merge_with(item)
+            if not succeeded:
+                simplified_options.append(item)
 
         if len(current_char_set.options) > 0:
             simplified_options.append(current_char_set.optimised())
 
-        return Alternation(simplified_options)
+        optimised = simplified_options
+        optimised = [item.optimised() for item in optimised]
+
+        # Alternations are not required for single items
+        # (?:[a-z]) --> [a-z]
+        # (?:hello) --> hello
+        if len(optimised) == 1:
+            return optimised[0]
+
+        return Alternation(optimised)
 
     def regex(self, as_atom=False, in_sequence=True) -> str:
         pattern = "|".join(option.regex() for option in self.options)
@@ -411,31 +445,51 @@ class CharSet (RegexNode):
         if len(self.options) == 0:
             return EmptyNode()
 
-        if len(self.options) == 1 and type(self.options[0]) is SingleChar:
-            return self.options[0]
+        unique_options = list(OrderedSet(self.options))
 
-        # TODO: Remove duplicates from the char set
+        if len(unique_options) == 1 and type(unique_options[0]) is SingleChar:
+            return unique_options[0]
+
         # TODO: Remove single chars that are already included in a range
 
-        return self
+        return CharSet(unique_options, self.is_inverted)
 
     def merge_with(self, node):
-        if self.is_inverted:
+        if type(node) is CharSet:
+            if len(self.options) == 0:
+                self.is_inverted = node.is_inverted
+
+            if self.is_inverted and node.is_inverted:
+                self_unique = OrderedSet(self.options)
+                other_unique = OrderedSet(node.options)
+
+                # [^abc] + [^bc] --> [^a]
+                merged_options = self_unique.symmetric_difference(other_unique)
+                self.options = list(merged_options)
+                return True
+
+            if not self.is_inverted and not node.is_inverted:
+                self.options.extend(node.options)
+                return True
+
             return False
 
-        # TODO: Handle negative char sets
-        if type(node) is CharSet and not node.is_inverted:
-            self.options.extend(node.options)
-            return True
-
-        if type(node) is SingleChar:
+        if not self.is_inverted and type(node) is SingleChar:
             self.options.append(node)
             return True
 
         return False
 
     def regex(self, as_atom=False, in_sequence=True) -> str:
-        return f"[{''.join([option.regex() for option in self.options])}]"
+        pattern = ''.join([option.regex() for option in self.options])
+
+        if self.is_inverted:
+            pattern = "^" + pattern
+
+        if len(pattern) == 0:
+            return ""
+
+        return f"[{pattern}]"
 
 
 # TODO: Add optimisation
@@ -575,7 +629,7 @@ class RepeatBetweenNM (RegexNode):
         optimised = self.pattern.optimised()
 
         if self.n == self.m:
-            return RepeatExactlyN(optimised, is_lazy=self.is_lazy)
+            return RepeatExactlyN(optimised, self.n, is_lazy=self.is_lazy)
 
         if self.m == 0:
             return EmptyNode()

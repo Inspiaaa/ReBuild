@@ -64,7 +64,7 @@ regex_grammar = r"""
     
     anchor: CARET | DOLLAR
     
-    char_set: "[" (range | single_char)+ "]"
+    char_set: "[" CARET? (range | single_char)+ "]"
 
     range: /[a-z]-[a-z]/
          | /[A-Z]-[A-Z]/
@@ -154,7 +154,15 @@ class ParseTreeTransformer (Transformer):
         from_char, to_char = items[0].split("-")
         return Range(from_char, to_char)
 
-    char_set = CharSet
+    def char_set(self, items):
+        if type(items[0]) is Token and items[0].type == "CARET":
+            is_inverted = True
+        else:
+            is_inverted = False
+
+        if is_inverted:
+            items = items[1:]
+        return CharSet(items, is_inverted)
 
     def repeat_exactly_n(self, items):
         pattern = _get_single_child(items)

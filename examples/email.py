@@ -19,4 +19,3 @@ print(pattern)
 
 # Generates
 # ^(?P<name>[\da-zA-Z._%+-]+)@(?P<domain>[\d\w.-]+\.[a-zA-Z]{2,})$
-

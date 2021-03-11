@@ -35,18 +35,6 @@ ReBuild transforms the OR of individual characters into a single character set
 """
 
 
-# Find all the characters in the [...] character sets
-# The problem is that [abc\]], []] and [abc\\] are all valid
-# and that [abc\]de] should result in abc\]de
-# and that [abc\\]de] should result in abc\\
-
-# \\\\ = Double back slash
-# \\] = Escaped ] character
-# . = Any other character
-_CHAR_SET_PATTERN = r"\[((?:\\\\|\\]|.)+?)\]"
-# TODO: Use improved pattern: \[((?:\\\\|\\]|[^\\\n])+?)\]
-
-
 INTERMEDIATE_OPTIMISATION = True
 
 
@@ -320,6 +308,16 @@ def if_not_preceded_by(pattern: str) -> str:
     return negative_lookbehind(pattern)
 
 
+def full_empty():
+    """Matches an empty string"""
+    return r"^$"
+
+
+def group(pattern):
+    """Alias of non_capture"""
+    return non_capture(pattern)
+
+
 def _optimise_intermediate(regex: str):
     if not INTERMEDIATE_OPTIMISATION:
         return regex
@@ -334,7 +332,3 @@ def optimise(regex: str, is_root=True):
     optimised = tree.optimised()
 
     return optimised.regex(as_atom=(not is_root), in_sequence=(not is_root))
-
-
-def full_empty():
-    return r"^$"

@@ -165,52 +165,63 @@ class Sequence (RegexNode):
         return pattern
 
 
-# TODO: Add optimisations (Look at the either() in previous version in rebuild.py)
-# TODO: Handle negative char sets [^...]
-# TODO: Factor out common part in sequences
+# TODO: Factor out common subexpressions in sequences
+# (?:aa|ab|ac) --> a(?:a|b|c) --> a[abc]
+# Or perhaps (?:a(?:a|b|c)) --> (?:a[abc]) --> a[abc]
+
+# TODO: Remove redundant items after empties
+# (?:a||b|c) --> (?:a|)
 class Alternation (RegexNode):
     def __init__(self, options):
         self.options = options
 
-    def optimised(self) -> "RegexNode":
-        optimised = [item.optimised() for item in self.options]
+    def _flatten_alternations(self, options):
+        """Flatten nested alternations (?:a|(?:b|c)) --> (?:a|b|c)"""
 
-        simplified_options = []
-
-        # Flatten nested alternations (?:a|(?:b|c)) --> (?:a|b|c)
-        for item in optimised:
+        simplified = []
+        for item in options:
             if type(item) is Alternation:
-                simplified_options.extend(item.options)
+                simplified.extend(item.options)
                 continue
 
-            simplified_options.append(item)
+            simplified.append(item)
 
-        optimised = simplified_options
-        simplified_options = []
+        return simplified
 
-        # Merge items together, that come directly after one another
-        # (?:a|b|c|hello) --> (?:[abc]|hello)
-        # (?:[0-9]|[a-z]|hello) --> (?:[0-9a-z]|hello)
+    def _join_adjacent_chars(self, options):
+        """Merge items together, that come directly after one another
+        (?:a|b|c|hello) --> (?:[abc]|hello)
+        (?:[0-9]|[a-z]|hello) --> (?:[0-9a-z]|hello)
+        """
         current_char_set = CharSet([])
 
-        for item in optimised:
+        simplified = []
+
+        for item in options:
             succeeded = current_char_set.merge_with(item)
 
             if succeeded:
                 continue
 
             if len(current_char_set.options) > 0:
-                simplified_options.append(current_char_set.optimised())
+                simplified.append(current_char_set.optimised())
                 current_char_set = CharSet([])
 
             succeeded = current_char_set.merge_with(item)
             if not succeeded:
-                simplified_options.append(item)
+                simplified.append(item)
 
         if len(current_char_set.options) > 0:
-            simplified_options.append(current_char_set.optimised())
+            simplified.append(current_char_set.optimised())
 
-        optimised = simplified_options
+        return simplified
+
+    def optimised(self) -> "RegexNode":
+        optimised = [item.optimised() for item in self.options]
+
+        optimised = self._flatten_alternations(optimised)
+        optimised = self._join_adjacent_chars(optimised)
+
         optimised = [item.optimised() for item in optimised]
 
         # Alternations are not required for single items
@@ -237,6 +248,8 @@ class SingleChar (RegexNode):
         return self.char
 
 
+# TODO: Optimise (a*)+ --> a*
+# (a?)+ --> a*
 class OneOrMore (RegexNode):
     def __init__(self, pattern, is_lazy=False):
         self.is_lazy = is_lazy

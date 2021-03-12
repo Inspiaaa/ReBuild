@@ -248,18 +248,20 @@ class SingleChar (RegexNode):
         return self.char
 
 
-# TODO: Optimise (a*)+ --> a*
-# (a?)+ --> a*
 class OneOrMore (RegexNode):
     def __init__(self, pattern, is_lazy=False):
         self.is_lazy = is_lazy
         self.pattern = pattern
 
     def optimised(self) -> "RegexNode":
-        if type(self.pattern) is EmptyNode:
+        optimised = self.pattern.optimised()
+
+        if type(optimised) is EmptyNode:
             return EmptyNode()
 
-        optimised = self.pattern.optimised()
+        if type(optimised) in (ZeroOrMore, Optional, OneOrMore):
+            return OneOrMore(optimised.pattern, self.is_lazy)
+
         return OneOrMore(optimised, self.is_lazy)
 
     def regex(self, as_atom=False, in_sequence=True) -> str:
@@ -283,10 +285,14 @@ class ZeroOrMore (RegexNode):
         self.pattern = pattern
 
     def optimised(self) -> "RegexNode":
-        if type(self.pattern) is EmptyNode:
+        optimised = self.pattern.optimised()
+
+        if type(optimised) is EmptyNode:
             return EmptyNode()
 
-        optimised = self.pattern.optimised()
+        if type(optimised) in (ZeroOrMore, Optional, OneOrMore):
+            return ZeroOrMore(optimised.pattern, self.is_lazy)
+
         return ZeroOrMore(optimised, self.is_lazy)
 
     def regex(self, as_atom=False, in_sequence=True) -> str:
@@ -310,10 +316,11 @@ class Optional (RegexNode):
         self.pattern = pattern
 
     def optimised(self) -> "RegexNode":
-        if type(self.pattern) is EmptyNode:
+        optimised = self.pattern.optimised()
+
+        if type(optimised) is EmptyNode:
             return EmptyNode()
 
-        optimised = self.pattern.optimised()
         return Optional(optimised, self.is_lazy)
 
     def regex(self, as_atom=False, in_sequence=True) -> str:

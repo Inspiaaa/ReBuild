@@ -205,7 +205,7 @@ class ParseTreeTransformer (Transformer):
 
 def debug_parse_tree(regex, use_lalr=True):
     if use_lalr:
-        parser = regex_parser
+        parser = Lark(regex_grammar, start=start, parser="lalr")
     else:
         parser = Lark(regex_grammar, start=start, parser="earley")
 

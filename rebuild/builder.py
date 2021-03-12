@@ -35,6 +35,7 @@ ReBuild transforms the OR of individual characters into a single character set
 """
 
 
+# TODO: Add functions to disable & enable the intermediate optimisations
 INTERMEDIATE_OPTIMISATION = True
 
 
@@ -221,11 +222,21 @@ def match_previous(num: int = None, name: str = None) -> str:
     return _optimise_intermediate(regex)
 
 
+# TODO: Handle special characters like \ and ] ^
 def one_of(possible_characters: str) -> str:
     if possible_characters == "":
         return ""
 
     regex = f"[{possible_characters}]"
+    return _optimise_intermediate(regex)
+
+
+# TODO: Handle special characters like \ and ]
+def not_one_of(possible_characters: str) -> str:
+    if possible_characters == "":
+        return ""
+
+    regex = f"[^{possible_characters}]"
     return _optimise_intermediate(regex)
 
 

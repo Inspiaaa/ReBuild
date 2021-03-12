@@ -296,6 +296,7 @@ def if_group_exists_then_else(name: str, then: str, elsewise: str) -> str:
     return _optimise_intermediate(regex)
 
 
+# TODO: Create more aliased functions, that have shorter names (e.g. n_times(...), n_or_more(...))
 # Aliased functions
 
 def capture_as(name: str, pattern: str) -> str:

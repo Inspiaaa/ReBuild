@@ -168,6 +168,7 @@ class Sequence (RegexNode):
 # TODO: Factor out common subexpressions in sequences
 # (?:aa|ab|ac) --> a(?:a|b|c) --> a[abc]
 # Or perhaps (?:a(?:a|b|c)) --> (?:a[abc]) --> a[abc]
+# This is useful for cases like: (?:grey|gray) --> gr[ea]y
 
 # TODO: Remove redundant items after empties
 # (?:a||b|c) --> (?:a|)

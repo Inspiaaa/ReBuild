@@ -20,13 +20,17 @@ class RegexNode:
         if type(self) is not type(other):
             return False
 
-        own_fields = tuple([(k, v) for k, v in self.__dict__.items() if not k.startswith("_")])
-        other_fields = tuple([(k, v) for k, v in other.__dict__.items() if not k.startswith("_")])
+        own_fields = tuple((k, v) for k, v in self.__dict__.items() if not k.startswith("_"))
+        other_fields = tuple((k, v) for k, v in other.__dict__.items() if not k.startswith("_"))
 
         return own_fields == other_fields
 
     def __hash__(self):
-        return hash(tuple([(k, v) for k, v in self.__dict__.items() if not k.startswith("_")]))
+        return hash(tuple(
+            (k, tuple(v) if type(v) is list else v)
+            for k, v in self.__dict__.items()
+            if not k.startswith("_")
+        ))
 
     def __bool__(self):
         return True
@@ -58,6 +62,7 @@ class RegexNode:
         # Find all properties / fields of the object
         fields = [field for field in vars(self) if not field.startswith("_")]
 
+        # Get the name of the object's class
         name = prettify_classname(self.__class__.__name__)
 
         # E.g. for EmptyNode
@@ -176,6 +181,9 @@ class Alternation (RegexNode):
     def __init__(self, options):
         self.options = options
 
+    def _remove_duplicates(self, options):
+        return list(OrderedSet(options))
+
     def _flatten_alternations(self, options):
         """Flatten nested alternations (?:a|(?:b|c)) --> (?:a|b|c)"""
 
@@ -221,6 +229,7 @@ class Alternation (RegexNode):
         optimised = [item.optimised() for item in self.options]
 
         optimised = self._flatten_alternations(optimised)
+        optimised = self._remove_duplicates(optimised)
         optimised = self._join_adjacent_chars(optimised)
 
         optimised = [item.optimised() for item in optimised]
